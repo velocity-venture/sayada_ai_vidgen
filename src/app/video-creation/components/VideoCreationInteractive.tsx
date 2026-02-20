@@ -17,8 +17,10 @@ import GenerationCostCard from './GenerationCostCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { projectService } from '@/services/projectService';
 import { videoTemplateService } from '@/services/videoTemplateService';
+import { scriptureAnalysisService } from '@/services/scriptureAnalysisService';
 import { supabase } from '@/lib/supabase/client';
 import type { VideoTemplate } from '@/types/models';
+import type { ScriptureAnalysisResponse } from '@/lib/types/openai';
 import TemplateSelector from './TemplateSelector';
 import StatusLogPanel from './StatusLogPanel';
 
@@ -69,6 +71,17 @@ export function VideoCreationInteractive() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [statusUpdates, setStatusUpdates] = useState<StatusUpdate[]>([]);
   const [showStatusLog, setShowStatusLog] = useState(false);
+
+  // Analysis state
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<ScriptureAnalysisResponse | null>(null);
+
+  // Audio generation state
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [audioGenerationResult, setAudioGenerationResult] = useState<{
+    audioUrl: string;
+    audioDuration: number;
+  } | null>(null);
 
   // Read template params from URL on mount
   useEffect(() => {
@@ -441,6 +454,50 @@ export function VideoCreationInteractive() {
       });
       setIsGenerating(false);
       setShowStatusLog(false);
+    }
+  };
+
+  const handleAnalyzeScripture = async () => {
+    if (!scriptText.trim() || scriptText.trim().length < 50) {
+      addNotification({
+        type: 'warning',
+        title: 'Validation Error',
+        message: 'Scripture text must be at least 50 characters',
+        duration: 3000
+      });
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisResult(null);
+
+    try {
+      const result = await scriptureAnalysisService.analyzeScripture({
+        scriptureText: scriptText.trim(),
+        videoDuration: videoDuration,
+        stylePreset: selectedStyle
+      });
+
+      if (result.success && result.data) {
+        setAnalysisResult(result.data);
+        addNotification({
+          type: 'success',
+          title: 'Analysis Complete',
+          message: `Generated ${result.data.totalScenes} scenes for your scripture`,
+          duration: 3000
+        });
+      } else {
+        throw new Error(result.error?.message || 'Failed to analyze scripture');
+      }
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        title: 'Analysis Failed',
+        message: error instanceof Error ? error.message : 'Failed to analyze scripture. Please try again.',
+        duration: 4000
+      });
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
